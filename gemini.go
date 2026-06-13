@@ -75,7 +75,7 @@ func (e *geminiError) isZeroQuota() bool {
 // the fallback chain until one succeeds or all are exhausted.
 func askGemini(userMessage string) (string, error) {
 	if Config.GeminiKey == "" || Config.GeminiKey == "your_gemini_api_key_here" {
-		return "⚠️ Gemini API key not configured.\n\nOpen the *.env* file and set:\nGEMINI_API_KEY=your_key_here\n\nGet a free key at: https://aistudio.google.com/apikey", nil
+		return "", fmt.Errorf("Gemini API key is not configured in .env")
 	}
 
 	reqBody := geminiRequest{
@@ -105,7 +105,7 @@ func askGemini(userMessage string) (string, error) {
 			if apiErr.isZeroQuota() {
 				// limit:0 means the whole project/key has no quota — stop immediately
 				fmt.Printf("❌ Gemini API key has zero quota (limit: 0). A new key is needed.\n")
-				return "❌ *AI unavailable — API key issue.*\n\nThe current Gemini API key has no quota (limit: 0). This usually means:\n• The key might be invalid or copied incorrectly\n• The Google Cloud project has no Gemini quota enabled\n\n*Fix:* Get a valid free key at https://aistudio.google.com/apikey and update your *.env* file, then restart the bot.", nil
+				return "", fmt.Errorf("Gemini API key has zero quota (limit: 0)")
 			}
 			if apiErr.isQuotaError() {
 				fmt.Printf("⚠️  Gemini [%s] quota exceeded, trying next model...\n", model)
@@ -116,8 +116,8 @@ func askGemini(userMessage string) (string, error) {
 		return reply, nil
 	}
 
-	// All models exhausted — distinguish between temp rate-limit and full quota exhaustion
-	return "⏳ *AI is temporarily unavailable.*\n\nThe free Gemini API quota has been reached. Options:\n• Wait ~1 minute and try again\n• Get a new API key at https://aistudio.google.com/apikey and update your *.env* file\n\nYou can still use *!help*, *!info*, *!rules* while AI is unavailable.", nil
+	// All models exhausted
+	return "", fmt.Errorf("all models exhausted (quota exceeded or rate limited)")
 }
 
 // callGemini makes a single REST call to one Gemini model.

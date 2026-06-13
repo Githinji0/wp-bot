@@ -89,7 +89,7 @@ func handleMessage(c *whatsmeow.Client, v *events.Message) {
 	reply, err := askGemini(text)
 	if err != nil {
 		fmt.Printf("❌ Gemini error: %v\n", err)
-		sendText(c, v.Info.Chat, "⚠️ Something went wrong. Please try again later.")
+		sendText(c, v.Info.Chat, "🤖 *AI assistant is temporarily unavailable.* Please try again later.")
 		return
 	}
 	sendText(c, v.Info.Chat, reply)
