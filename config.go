@@ -10,7 +10,7 @@ import (
 
 // AppConfig holds all runtime configuration loaded from the .env file.
 type AppConfig struct {
-	GeminiKey    string
+	GroqKey      string
 	AwayMode     bool
 	AwayMessage  string
 	BlockedWords []string
@@ -25,7 +25,7 @@ func LoadConfig() {
 		log.Println("ℹ️  No .env file found — using system environment variables")
 	}
 
-	Config.GeminiKey = os.Getenv("GEMINI_API_KEY")
+	Config.GroqKey = os.Getenv("GROQ_API_KEY")
 	Config.AwayMode = strings.ToLower(os.Getenv("AWAY_MODE")) == "true"
 
 	Config.AwayMessage = os.Getenv("AWAY_MESSAGE")
@@ -43,6 +43,6 @@ func LoadConfig() {
 		}
 	}
 
-	log.Printf("✅ Config loaded | Away: %v | Blocked words: %d | Gemini: %v",
-		Config.AwayMode, len(Config.BlockedWords), Config.GeminiKey != "")
+	log.Printf("✅ Config loaded | Away: %v | Blocked words: %d | Groq: %v",
+		Config.AwayMode, len(Config.BlockedWords), Config.GroqKey != "")
 }
