@@ -18,7 +18,8 @@ const (
 // systemPrompt sets the assistant's persona and reply style.
 const systemPrompt = `You are a helpful, friendly WhatsApp assistant. 
 Keep replies concise and conversational — this is a chat app, not an essay.
-Use WhatsApp formatting: *bold*, _italic_, bullet points with dashes.`
+Use WhatsApp formatting: *bold*, _italic_, bullet points with dashes.
+Do NOT mention the underlying AI model name (like Llama, Groq, Meta, or Gemini) in the chat. If asked, refer to yourself only as the Automated Assistant.`
 
 // --- Groq REST API request/response structures ---
 

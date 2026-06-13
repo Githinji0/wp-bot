@@ -19,6 +19,9 @@ func main() {
 	// 1. Load .env configuration
 	LoadConfig()
 
+	// Initialize User States Database (menu & stop/start commands)
+	InitUserStatesDB()
+
 	// 2. Set up SQLite session store with WAL mode for concurrent-write safety
 	dbLog := waLog.Stdout("Database", "WARN", true)
 	clientLog := waLog.Stdout("Client", "WARN", true)

@@ -10,6 +10,26 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
+const menuMessage = `*🤖 [Automated Assistant]*
+
+Welcome! I am your automated chat companion. Here is what I can do:
+
+🎮 *Games*
+• ` + "`!hangman`" + ` - Start a game of Hangman
+• ` + "`!meme <text>`" + ` - Generate a custom meme
+
+ℹ️ *Information & Tools*
+• ` + "`!weather <city>`" + ` - Get real-time weather info
+• ` + "`!remindme <time> <msg>`" + ` - Set a quick reminder (e.g., ` + "`10m buy milk`" + `)
+• ` + "`!info`" + ` - Show information about the bot`
+
+🤖 *AI Chat*
+• Just type any message to chat with me using AI!
+
+🛑 *Chat Controls*
+• ` + "`!stop`" + ` - Stop the bot from responding to you
+• ` + "`!start`" + ` - Resume chat responses and show this menu`
+
 
 // setupEventHandler registers the central event router on the WhatsApp client.
 func setupEventHandler(c *whatsmeow.Client) {
@@ -69,25 +89,59 @@ func handleMessage(c *whatsmeow.Client, v *events.Message) {
 		return
 	}
 
-	// 4. Command dispatch (!help, !info, !rules, !away)
+	// 4. Group messages only get command support — no AI in groups, no DM state machine
+	if isGroup {
+		if reply, ok := dispatchCommand(text, sender); ok {
+			sendText(c, v.Info.Chat, reply)
+		}
+		return
+	}
+
+	// 5. DM Session State Machine
+	userState := GetUserState(sender)
+	cleanText := strings.ToLower(strings.TrimSpace(text))
+
+	if userState == "stopped" {
+		if cleanText == "start" || cleanText == "!start" {
+			SetUserState(sender, "started")
+			sendText(c, v.Info.Chat, "*🤖 [Automated Assistant]*\n\n🟢 *AI Assistant is now enabled!* How can I help you today?\n\nType any message to chat, or type `!start` to see the menu.")
+			return
+		}
+		// Silently ignore everything else when stopped
+		return
+	}
+
+	if userState == "new" {
+		SetUserState(sender, "started")
+		sendText(c, v.Info.Chat, menuMessage)
+		return
+	}
+
+	if cleanText == "stop" || cleanText == "!stop" {
+		SetUserState(sender, "stopped")
+		sendText(c, v.Info.Chat, "*🤖 [Automated Assistant]*\n\n🛑 *AI Assistant has been disabled for this chat.* I will not reply to any messages until you type `!start` or `start` again.")
+		return
+	}
+
+	if cleanText == "start" || cleanText == "!start" || cleanText == "help" || cleanText == "!help" || cleanText == "menu" || cleanText == "!menu" {
+		sendText(c, v.Info.Chat, menuMessage)
+		return
+	}
+
+	// 6. Command dispatch for DMs
 	if reply, ok := dispatchCommand(text, sender); ok {
 		sendText(c, v.Info.Chat, reply)
 		return
 	}
 
-	// 5. Group messages only get command support — no AI in groups
-	if isGroup {
-		return
-	}
-
-	// 6. Personal DM — away mode takes priority
+	// 7. Personal DM — away mode takes priority
 	cfg := GetConfig()
 	if cfg.AwayMode {
 		sendText(c, v.Info.Chat, cfg.AwayMessage)
 		return
 	}
 
-	// 7. Personal DM — ask Gemini AI
+	// 8. Personal DM — ask AI
 	if !cfg.AIAssist {
 		return
 	}

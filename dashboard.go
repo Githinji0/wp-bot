@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -51,16 +52,34 @@ func AddDashboardMessage(sender, pushName, content string, isGroup bool) {
 }
 
 // StartDashboardServer spins up the Web Dashboard server.
-func StartDashboardServer(port string) {
+func StartDashboardServer(preferredPort string) {
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/api/status", handleStatus)
 	http.HandleFunc("/api/qr", handleQR)
 	http.HandleFunc("/api/config", handleConfigUpdate)
 	http.HandleFunc("/api/messages", handleMessagesList)
 
-	log.Printf("🌐 Starting Bot Dashboard on http://localhost:%s", port)
 	go func() {
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
+		ports := []string{preferredPort, "8081", "8082", "8085", "9000"}
+		var listener net.Listener
+		var err error
+		var selectedPort string
+
+		for _, p := range ports {
+			listener, err = net.Listen("tcp", ":"+p)
+			if err == nil {
+				selectedPort = p
+				break
+			}
+		}
+
+		if err != nil {
+			log.Printf("❌ Failed to start Dashboard: all fallback ports are occupied. error: %v", err)
+			return
+		}
+
+		log.Printf("🌐 Bot Dashboard is running on http://localhost:%s", selectedPort)
+		if err := http.Serve(listener, nil); err != nil {
 			log.Printf("❌ Dashboard Server error: %v", err)
 		}
 	}()
