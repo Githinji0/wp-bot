@@ -58,6 +58,7 @@ func handleMessage(c *whatsmeow.Client, v *events.Message) {
 	isGroup := v.Info.IsGroup
 
 	fmt.Printf("[%s] %s: %s\n", chatLabel(isGroup), sender, text)
+	AddDashboardMessage(sender, v.Info.PushName, text, isGroup)
 
 	// 3. Blocked word filter
 	if blockedWord := findBlockedWord(text); blockedWord != "" {
@@ -80,19 +81,24 @@ func handleMessage(c *whatsmeow.Client, v *events.Message) {
 	}
 
 	// 6. Personal DM — away mode takes priority
-	if Config.AwayMode {
-		sendText(c, v.Info.Chat, Config.AwayMessage)
+	cfg := GetConfig()
+	if cfg.AwayMode {
+		sendText(c, v.Info.Chat, cfg.AwayMessage)
 		return
 	}
 
 	// 7. Personal DM — ask Gemini AI
+	if !cfg.AIAssist {
+		return
+	}
 	reply, err := askGemini(text)
 	if err != nil {
 		fmt.Printf("❌ Gemini error: %v\n", err)
-		sendText(c, v.Info.Chat, "🤖 *AI assistant is temporarily unavailable.* Please try again later.")
+		sendText(c, v.Info.Chat, "*🤖 [Automated Assistant]*\n\n🤖 *AI assistant is temporarily unavailable.* Please try again later.")
 		return
 	}
-	sendText(c, v.Info.Chat, reply)
+	formattedReply := fmt.Sprintf("*🤖 [Automated Assistant]*\n\n%s", reply)
+	sendText(c, v.Info.Chat, formattedReply)
 }
 
 // handleGroupInfo fires when group metadata changes, including member joins.
@@ -125,7 +131,8 @@ func extractText(v *events.Message) string {
 // findBlockedWord returns the first blocked word found in text, or "".
 func findBlockedWord(text string) string {
 	lower := strings.ToLower(text)
-	for _, word := range Config.BlockedWords {
+	cfg := GetConfig()
+	for _, word := range cfg.BlockedWords {
 		if strings.Contains(lower, word) {
 			return word
 		}

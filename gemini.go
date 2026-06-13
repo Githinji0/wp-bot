@@ -48,12 +48,13 @@ type groqError struct {
 // askGemini queries the Groq Llama 3.3 model using direct REST API calls.
 // We keep the function name to avoid breaking the event handler in handler.go.
 func askGemini(userMessage string) (string, error) {
-	if Config.GroqKey == "" {
+	cfg := GetConfig()
+	if cfg.GroqKey == "" {
 		return "", fmt.Errorf("Groq API key is not configured in .env")
 	}
 
 	reqBody := groqRequest{
-		Model: "llama-3.3-70b-versatile",
+		Model: cfg.GroqModel,
 		Messages: []groqMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userMessage},
@@ -70,7 +71,7 @@ func askGemini(userMessage string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+Config.GroqKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.GroqKey)
 
 	httpClient := &http.Client{Timeout: groqTimeout}
 	resp, err := httpClient.Do(req)

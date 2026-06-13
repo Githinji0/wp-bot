@@ -41,6 +41,10 @@ func main() {
 	// 3. Create WhatsApp client and register event handler
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	setupEventHandler(client)
+	WhatsAppClient = client
+
+	// Start the Bot Dashboard on port 8080
+	StartDashboardServer("8080")
 
 	// 4. Connect — show QR code on first run, reconnect silently on subsequent runs
 	if client.Store.ID == nil {
@@ -51,6 +55,9 @@ func main() {
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
+				CurrentQRCodeLock.Lock()
+				CurrentQRCode = evt.Code
+				CurrentQRCodeLock.Unlock()
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 				fmt.Println("👉 Scan the QR code using WhatsApp → Settings → Linked Devices → Link a Device")
 			} else {
