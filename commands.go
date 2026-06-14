@@ -222,9 +222,16 @@ func cmdMeme(sender, args string) string {
 	return fmt.Sprintf("🎨 *Here is your custom meme (%s)*:\n%s", templateName, url)
 }
 
+// HangmanWord holds a word and its corresponding category/hint.
+type HangmanWord struct {
+	Word string
+	Hint string
+}
+
 // HangmanGame holds the state of a hangman match.
 type HangmanGame struct {
 	Word      string
+	Hint      string
 	Guessed   map[rune]bool
 	Attempts  int
 	MaxErrors int
@@ -233,9 +240,69 @@ type HangmanGame struct {
 var (
 	hangmanGames = make(map[string]*HangmanGame)
 	hangmanMutex sync.Mutex
-	hangmanWords = []string{
-		"whatsapp", "golang", "programming", "developer", "computer",
-		"internet", "database", "security", "application", "network",
+	hangmanWords = []HangmanWord{
+		{"whatsapp", "The messaging app you are currently using to talk to me!"},
+		{"golang", "The programming language this bot is written in."},
+		{"programming", "The process of writing computer programs."},
+		{"developer", "A person who writes code and builds software."},
+		{"computer", "An electronic device for storing and processing data."},
+		{"internet", "The global computer network providing information and communication."},
+		{"database", "An organized collection of data, typically stored electronically."},
+		{"security", "Protection from threats, malware, and unauthorized access."},
+		{"application", "A software program designed for end-users (often shortened to app)."},
+		{"network", "A group of two or more computer systems linked together."},
+	}
+
+	hangmanArt = []string{
+		`  +---+
+  |   |
+      |
+      |
+      |
+      |
+=========`,
+		`  +---+
+  |   |
+  O   |
+      |
+      |
+      |
+=========`,
+		`  +---+
+  |   |
+  O   |
+  |   |
+      |
+      |
+=========`,
+		`  +---+
+  |   |
+ \O   |
+  |   |
+      |
+      |
+=========`,
+		`  +---+
+  |   |
+ \O/  |
+  |   |
+      |
+      |
+=========`,
+		`  +---+
+  |   |
+ \O/  |
+  |   |
+ /    |
+      |
+=========`,
+		`  +---+
+  |   |
+ \O/  |
+  |   |
+ / \  |
+      |
+=========`,
 	}
 )
 
@@ -248,23 +315,26 @@ func cmdHangman(sender, args string) string {
 	guess := strings.ToLower(strings.TrimSpace(args))
 
 	if !ok || guess == "start" || guess == "reset" || guess == "" {
-		word := hangmanWords[rand.Intn(len(hangmanWords))]
+		selected := hangmanWords[rand.Intn(len(hangmanWords))]
 		hangmanGames[sender] = &HangmanGame{
-			Word:      word,
+			Word:      selected.Word,
+			Hint:      selected.Hint,
 			Guessed:   make(map[rune]bool),
 			Attempts:  0,
 			MaxErrors: 6,
 		}
-		return "🎮 *Hangman Started!*\n\n" + getHangmanDisplay(hangmanGames[sender]) + "\n\nGuess a letter by typing: `!hangman <letter>`"
+		game = hangmanGames[sender]
+		return fmt.Sprintf("🎮 *Hangman Started!*\n\n💡 *Hint*: %s\n\n```\n%s\n```\n\n%s\n\nGuess a letter by typing it!",
+			game.Hint, hangmanArt[0], getHangmanDisplay(game))
 	}
 
 	if len(guess) != 1 {
-		return "⚠️ Please guess exactly one letter. Example: `!hangman a`"
+		return "⚠️ Please guess exactly one letter. Example: `a`"
 	}
 
 	letter := rune(guess[0])
 	if game.Guessed[letter] {
-		return "⚠️ You already guessed the letter '" + string(letter) + "'.\n\n" + getHangmanDisplay(game)
+		return fmt.Sprintf("⚠️ You already guessed the letter '%s'.\n\n```\n%s\n```\n\n%s", string(letter), hangmanArt[game.Attempts], getHangmanDisplay(game))
 	}
 
 	game.Guessed[letter] = true
@@ -293,12 +363,12 @@ func cmdHangman(sender, args string) string {
 
 	if won {
 		delete(hangmanGames, sender)
-		return fmt.Sprintf("🎉 *Congratulations! You Won!*\n\nThe word was: *%s*", game.Word)
+		return fmt.Sprintf("🎉 *Congratulations! You Won!*\n\nThe word was: *%s*\n💡 *Hint*: %s", game.Word, game.Hint)
 	}
 
 	if game.Attempts >= game.MaxErrors {
 		delete(hangmanGames, sender)
-		return fmt.Sprintf("💀 *Game Over! You Lost.*\n\nThe word was: *%s*\n\nType `!hangman` to start a new game.", game.Word)
+		return fmt.Sprintf("💀 *Game Over! You Lost.*\n\n```\n%s\n```\n\nThe word was: *%s*\n\nType `hangman` to start a new game.", hangmanArt[6], game.Word)
 	}
 
 	status := "❌ Incorrect guess!"
@@ -306,7 +376,8 @@ func cmdHangman(sender, args string) string {
 		status = "✅ Correct guess!"
 	}
 
-	return fmt.Sprintf("🎮 *Hangman*\n\n%s\n\n%s\n\nRemaining Errors Allowed: *%d*", status, display, game.MaxErrors-game.Attempts)
+	return fmt.Sprintf("🎮 *Hangman*\n\n💡 *Hint*: %s\n\n```\n%s\n```\n\n%s\n\n%s\n\nRemaining Errors Allowed: *%d*",
+		game.Hint, hangmanArt[game.Attempts], status, display, game.MaxErrors-game.Attempts)
 }
 
 func getHangmanDisplay(game *HangmanGame) string {

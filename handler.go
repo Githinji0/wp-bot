@@ -21,7 +21,7 @@ Welcome! I am your automated chat companion. Here is what I can do:
 ℹ️ *Information & Tools*
 • ` + "`!weather <city>`" + ` - Get real-time weather info
 • ` + "`!remindme <time> <msg>`" + ` - Set a quick reminder (e.g., ` + "`10m buy milk`" + `)
-• ` + "`!info`" + ` - Show information about the bot`
+• ` + "`!info`" + ` - Show information about the bot
 
 🤖 *AI Chat*
 • Just type any message to chat with me using AI!
