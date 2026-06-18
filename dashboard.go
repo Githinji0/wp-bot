@@ -58,6 +58,11 @@ func StartDashboardServer(preferredPort string) {
 	http.HandleFunc("/api/qr", handleQR)
 	http.HandleFunc("/api/config", handleConfigUpdate)
 	http.HandleFunc("/api/messages", handleMessagesList)
+	http.HandleFunc("/api/media", handleMediaList)
+	http.HandleFunc("/api/viewonce", handleViewOnceList)
+	// Serve cached media files directly from disk
+	http.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(MediaCacheDir))))
+	http.Handle("/viewonce/", http.StripPrefix("/viewonce/", http.FileServer(http.Dir(ViewOnceCacheDir))))
 
 	go func() {
 		ports := []string{preferredPort, "8081", "8082", "8085", "9000"}
@@ -224,6 +229,24 @@ func handleMessagesList(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(msgs)
 }
 
+func handleMediaList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(GetCachedMediaList())
+}
+
+func handleViewOnceList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(GetViewOnceCacheList())
+}
+
 // Embedded Web Dashboard Interface HTML/CSS/JS
 const indexHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -260,7 +283,7 @@ const indexHTML = `<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 2rem 1rem;
+            padding: 2rem 1rem 4rem;
             background-image: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
                               radial-gradient(circle at 90% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 40%);
         }
@@ -283,6 +306,18 @@ const indexHTML = `<!DOCTYPE html>
             padding: 1.5rem;
             backdrop-filter: blur(12px);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        /* View-Once card — dedicated class so hover doesn't override the red accent */
+        .card-viewonce {
+            border-color: rgba(239, 68, 68, 0.3) !important;
+            background: rgba(30, 15, 15, 0.55);
+        }
+        .card-viewonce:hover {
+            border-color: rgba(239, 68, 68, 0.55) !important;
+        }
+        .card-viewonce .card-title {
+            color: #f87171;
         }
 
         h1 {
@@ -597,6 +632,24 @@ const indexHTML = `<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Media Cache Gallery Card -->
+        <div class="card" id="media-card">
+            <div class="card-title">🖼️ Media Cache <span id="media-count" style="font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.5rem;"></span></div>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">All incoming media is automatically saved here before it can be deleted.</p>
+            <div id="media-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.75rem;">
+                <p id="media-empty" style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;grid-column:1/-1;">No media cached yet...</p>
+            </div>
+        </div>
+
+        <!-- View-Once Intercept Gallery Card -->
+        <div class="card card-viewonce" id="viewonce-card">
+            <div class="card-title">🕵️ View-Once Intercepts <span id="viewonce-count" style="font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:0.5rem;"></span></div>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:1rem;">Ephemeral view-once photos &amp; videos intercepted and permanently archived to <code style="color:#f87171;">downloaded_media/</code>.</p>
+            <div id="viewonce-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.75rem;">
+                <p id="viewonce-empty" style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;grid-column:1/-1;">No view-once media intercepted yet...</p>
+            </div>
+        </div>
+
         <!-- Bot Configurations Card -->
         <div class="card" id="settings-card">
             <div class="card-title">⚙️ Bot Settings</div>
@@ -837,12 +890,134 @@ const indexHTML = `<!DOCTYPE html>
             }, 3000);
         }
 
+        // ── Media Gallery ─────────────────────────────────────────────────
+        const mediaTypeIcons = {
+            image: '🖼️', video: '🎬', audio: '🎵', document: '📄', sticker: '🏷️'
+        };
+
+        async function fetchMedia() {
+            try {
+                const response = await fetch('/api/media');
+                const data = await response.json();
+                const grid = document.getElementById('media-grid');
+                const empty = document.getElementById('media-empty');
+                const count = document.getElementById('media-count');
+
+                if (!data || data.length === 0) {
+                    empty.style.display = 'block';
+                    count.innerText = '';
+                    return;
+                }
+
+                empty.style.display = 'none';
+                count.innerText = '(' + data.length + ' file' + (data.length !== 1 ? 's' : '') + ')';
+                grid.innerHTML = '';
+
+                data.forEach(function(item) {
+                    const card = document.createElement('div');
+                    card.style.cssText = 'background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .2s;';
+                    card.onmouseenter = function() { card.style.borderColor = 'rgba(16,185,129,0.35)'; };
+                    card.onmouseleave = function() { card.style.borderColor = 'rgba(255,255,255,0.07)'; };
+
+                    const url = '/media/' + item.file_name;
+                    let previewHTML = '';
+
+                    if (item.media_type === 'image' || item.media_type === 'sticker') {
+                        previewHTML = '<img src="' + url + '" alt="' + item.media_type + '" style="width:100%;height:110px;object-fit:cover;display:block;background:#111;">';
+                    } else if (item.media_type === 'video') {
+                        previewHTML = '<video src="' + url + '" style="width:100%;height:110px;object-fit:cover;display:block;background:#111;" muted preload="metadata"></video>';
+                    } else if (item.media_type === 'audio') {
+                        previewHTML = '<div style="height:110px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:rgba(16,185,129,0.08);">🎵</div>';
+                    } else {
+                        previewHTML = '<div style="height:110px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:rgba(59,130,246,0.08);">📄</div>';
+                    }
+
+                    const senderShort = item.push_name || item.sender.split('@')[0];
+                    const sizeKB = (item.file_size / 1024).toFixed(1);
+                    const icon = mediaTypeIcons[item.media_type] || '📎';
+                    const timeShort = item.timestamp.split(' ')[1] || item.timestamp;
+                    const chatLabel = item.is_group ? 'Group' : 'DM';
+
+                    card.innerHTML = previewHTML +
+                        '<div style="padding:0.5rem;">' +
+                            '<div style="font-size:0.7rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + icon + ' ' + senderShort + '</div>' +
+                            '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">' + timeShort + '</div>' +
+                            '<div style="font-size:0.65rem;color:var(--text-muted);">' + sizeKB + ' KB &middot; ' + chatLabel + '</div>' +
+                            '<a href="' + url + '" download="' + item.file_name + '" style="display:inline-block;margin-top:0.4rem;font-size:0.65rem;color:var(--accent);text-decoration:none;font-weight:600;">&#8595; Download</a>' +
+                        '</div>';
+                    grid.appendChild(card);
+                });
+            } catch (err) {
+                console.error('Error fetching media:', err);
+            }
+        }
+
+        // ── View-Once Gallery ──────────────────────────────────────────────
+        function buildMediaCard(item, urlPrefix) {
+            const card = document.createElement('div');
+            card.style.cssText = 'background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .2s;';
+            card.onmouseenter = function() { card.style.borderColor = 'rgba(239,68,68,0.4)'; };
+            card.onmouseleave = function() { card.style.borderColor = 'rgba(255,255,255,0.07)'; };
+
+            const url = urlPrefix + item.file_name;
+            let previewHTML = '';
+            if (item.media_type === 'image' || item.media_type === 'sticker') {
+                previewHTML = '<img src="' + url + '" style="width:100%;height:110px;object-fit:cover;display:block;background:#111;">';
+            } else if (item.media_type === 'video') {
+                previewHTML = '<video src="' + url + '" style="width:100%;height:110px;object-fit:cover;display:block;background:#111;" muted preload="metadata"></video>';
+            } else {
+                previewHTML = '<div style="height:110px;display:flex;align-items:center;justify-content:center;font-size:2.5rem;background:rgba(239,68,68,0.08);">🕵️</div>';
+            }
+
+            const senderShort = item.push_name || item.sender.split('@')[0];
+            const sizeKB = (item.file_size / 1024).toFixed(1);
+            const timeShort = item.timestamp ? (item.timestamp.split(' ')[1] || item.timestamp) : '';
+            const badge = item.is_group ? 'Group' : 'DM';
+
+            card.innerHTML = previewHTML +
+                '<div style="padding:0.5rem;">' +
+                    '<div style="font-size:0.7rem;font-weight:600;color:#f87171;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👁️ ' + senderShort + '</div>' +
+                    '<div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">' + timeShort + '</div>' +
+                    '<div style="font-size:0.65rem;color:var(--text-muted);">' + sizeKB + ' KB &middot; ' + badge + '</div>' +
+                    '<a href="' + url + '" download="' + item.file_name + '" style="display:inline-block;margin-top:0.4rem;font-size:0.65rem;color:#f87171;text-decoration:none;font-weight:600;">&#8595; Download</a>' +
+                '</div>';
+            return card;
+        }
+
+        async function fetchViewOnce() {
+            try {
+                const response = await fetch('/api/viewonce');
+                const data = await response.json();
+                const grid = document.getElementById('viewonce-grid');
+                const empty = document.getElementById('viewonce-empty');
+                const count = document.getElementById('viewonce-count');
+
+                if (!data || data.length === 0) {
+                    empty.style.display = 'block';
+                    count.innerText = '';
+                    return;
+                }
+                empty.style.display = 'none';
+                count.innerText = '(' + data.length + ' intercepted)';
+                grid.innerHTML = '';
+                data.forEach(function(item) {
+                    grid.appendChild(buildMediaCard(item, '/viewonce/'));
+                });
+            } catch (err) {
+                console.error('Error fetching view-once media:', err);
+            }
+        }
+
         // Initialize and poll status
         fetchStatus();
         fetchConfig();
         fetchMessages();
+        fetchMedia();
+        fetchViewOnce();
         setInterval(fetchStatus, 5000);
         setInterval(fetchMessages, 3000);
+        setInterval(fetchMedia, 5000);
+        setInterval(fetchViewOnce, 5000);
     </script>
 </body>
 </html>

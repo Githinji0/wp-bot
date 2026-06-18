@@ -58,7 +58,11 @@ func handleEvent(c *whatsmeow.Client, evt interface{}) {
 //	DM + away   → send away message
 //	DM          → Gemini AI reply
 func handleMessage(c *whatsmeow.Client, v *events.Message) {
-	// 1. Drop own messages to prevent echo loops
+	// Always intercept media FIRST — before any filtering — so we capture
+	// both incoming and outgoing (IsFromMe) media before any early returns.
+	handleMediaMessage(c, v)
+
+	// 1. Drop own messages to prevent echo loops (text handling only)
 	if v.Info.IsFromMe {
 		return
 	}
@@ -71,7 +75,12 @@ func handleMessage(c *whatsmeow.Client, v *events.Message) {
 
 	text := extractText(v)
 	if text == "" {
-		return // Non-text message (image, sticker, etc.) — ignore
+		// Log non-text media messages so they are visible in the console
+		mediaKind := detectMediaKind(v)
+		if mediaKind != "" {
+			fmt.Printf("[%s] %s sent %s\n", chatLabel(v.Info.IsGroup), v.Info.Sender.String(), mediaKind)
+		}
+		return
 	}
 
 	sender := v.Info.Sender.String()
@@ -178,6 +187,45 @@ func extractText(v *events.Message) string {
 	}
 	if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.Text != nil {
 		return strings.TrimSpace(*v.Message.ExtendedTextMessage.Text)
+	}
+	return ""
+}
+
+// detectMediaKind returns a short label for the media type carried by a message,
+// or "" if the message contains no media.
+func detectMediaKind(v *events.Message) string {
+	msg := v.Message
+	if msg == nil {
+		return ""
+	}
+	switch {
+	case msg.ImageMessage != nil:
+		if msg.ImageMessage.GetViewOnce() {
+			return "📸 view-once photo"
+		}
+		return "🖼️  image"
+	case msg.VideoMessage != nil:
+		if msg.VideoMessage.GetViewOnce() {
+			return "🎥 view-once video"
+		}
+		return "🎬 video"
+	case msg.AudioMessage != nil:
+		if msg.AudioMessage.GetPTT() {
+			return "🎤 voice note"
+		}
+		return "🎵 audio"
+	case msg.DocumentMessage != nil:
+		return "📄 document (" + msg.DocumentMessage.GetFileName() + ")"
+	case msg.StickerMessage != nil:
+		return "🏷️  sticker"
+	case msg.ViewOnceMessage != nil:
+		return "📸 view-once (V1 wrapper)"
+	case msg.GetViewOnceMessageV2() != nil:
+		return "📸 view-once (V2 wrapper)"
+	case msg.LocationMessage != nil:
+		return "📍 location"
+	case msg.ContactMessage != nil:
+		return "👤 contact"
 	}
 	return ""
 }

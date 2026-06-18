@@ -18,7 +18,6 @@ func InitUserStatesDB() {
 	}
 
 	query := `
-	
 	CREATE TABLE IF NOT EXISTS user_states (
 		jid TEXT PRIMARY KEY,
 		state TEXT
